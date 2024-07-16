@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { PrismaClient } from '@prisma/client';
@@ -22,13 +22,14 @@ export class ProductsService extends PrismaClient implements OnModuleInit {
 
   async findAll(paginationDto: PaginationDto) {
     const { page, limit } = paginationDto;
-    const totalPages = await this.product.count();
+    const totalPages = await this.product.count({ where: { available: true } });
     const lastPage = Math.ceil(totalPages / limit)
 
     return {
       data: await this.product.findMany({
         take: limit,
-        skip: (page - 1) * limit
+        skip: (page - 1) * limit,
+        where: { available: true }
       }),
       meta: {
         total: totalPages,
@@ -38,15 +39,40 @@ export class ProductsService extends PrismaClient implements OnModuleInit {
     }
   }
 
-  findOne(id: number) {
-    return `This action returns a #${id} product`;
+  async findOne(id: number) {
+    const product = await this.product.findFirst({
+      where: { id, available: true },
+    });
+
+    if (!product) {
+      throw new NotFoundException();
+    }
+    return product;
   }
 
-  update(id: number, updateProductDto: UpdateProductDto) {
-    return `This action updates a #${id} product`;
+  async update(id: number, updateProductDto: UpdateProductDto) {
+
+    const { id: _, ...data } = updateProductDto;
+
+    await this.findOne(id);
+
+    return this.product.update({
+      where: { id },
+      data: data
+    })
   }
 
-  remove(id: number) {
-    return `This action removes a #${id} product`;
+  async remove(id: number) {
+    await this.findOne(id);
+    const product = await this.product.update({
+      where: { id },
+      data: {
+        available: false
+      }
+    })
+    // return this.product.delete({
+    //   where: { id },
+    // });
+    return product;
   }
 }
